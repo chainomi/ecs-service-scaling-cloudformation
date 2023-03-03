@@ -1,0 +1,57 @@
+
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+    This template deploys an ecs service autoscaling
+Parameters: 
+
+
+Resources:
+
+  ApplicationAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - application-autoscaling.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: ECSBlogScalingRole
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - ecs:UpdateService
+            - ecs:DescribeServices
+            - application-autoscaling:*
+            - cloudwatch:DescribeAlarms
+            - cloudwatch:GetMetricStatistics
+            Resource: "*"
+
+  AutoScalingCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Containers CPU Utilization High
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      AlarmActions:
+      - Ref: AutoScalingPolicy
+      Dimensions:
+      - Name: ServiceName
+        Value:
+          Fn::GetAtt:
+          - YourECSServiceResource
+          - Name
+      - Name: ClusterName
+        Value:
+          Ref: YourECSClusterName
+      ComparisonOperator: GreaterThanOrEqualToThreshold

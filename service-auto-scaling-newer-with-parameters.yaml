@@ -1,0 +1,127 @@
+
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+    This template deploys ecs service autoscaling
+Parameters: 
+  Prefix:
+    Type: "String"
+    Default: "service-name" 
+
+  ClusterName:
+    Type: "String"
+    Default: "test-vpc" 
+
+  ServiceName:
+    Type: "String"
+    Default: "nginx"
+  
+  MinCapacity:
+    Type: "Number"
+    Default: 1   
+
+  MaxCapacity:
+    Type: "Number"
+    Default: 1 
+
+  TargetCPU:
+    Type: "Number"
+    Default: 60
+
+  StepScaleUpCooldown:
+    Type: "Number"
+    Default: 60
+
+  StepScaleUpAdjustment:
+    Type: "Number"
+    Default: 1
+
+  StepScaleDownCooldown:
+    Type: "Number"
+    Default: 60
+
+  StepScaleDownAdjustment:
+    Type: "Number"
+    Default: -1
+
+
+Resources:
+
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      RoleARN: !GetAtt AutoScalingRole.Arn
+      ResourceId: !Join
+        - "/"
+        - [service, !Ref ClusterName, !Ref ServiceName]
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      
+      #change these
+      MinCapacity: !Ref MinCapacity
+      MaxCapacity: !Ref MaxCapacity
+
+  ScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${Prefix}-auto-scaling-policy" #change this
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref TargetCPU  #change this
+
+  ScaleUpPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${Prefix}-step-scale-up-policy" #change this
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: !Ref StepScaleUpCooldown
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: !Ref StepScaleUpAdjustment #change this
+
+  ScaleDownPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${Prefix}-step-scale-down-policy" #change this
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: !Ref StepScaleDownCooldown
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: !Ref StepScaleDownAdjustment #change this
+
+
+  AutoScalingRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: !Sub "${Prefix}-auto-scaling-role" #change this
+        AssumeRolePolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: [application-autoscaling.amazonaws.com]
+              Action: ["sts:AssumeRole"]
+        Policies:
+          - PolicyName: !Sub "${Prefix}-auto-scaling-policy" #change this
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ecs:DescribeServices
+                    - ecs:UpdateService
+                    - cloudwatch:PutMetricAlarm
+                    - cloudwatch:DescribeAlarms
+                    - cloudwatch:DeleteAlarms
+                  Resource:
+                    - "*"        
